@@ -44,6 +44,7 @@ type ApprovalRequest struct {
 	Id        int                      `json:"id,omitempty"`
 	Requester string                   `json:"requester"`
 	Subject   string                   `json:"subject"`
+	Archived  bool                     `json:"archived"`
 	Status    ApprovalStatus           `json:"status,omitempty"`
 	Decisions []ApprovalDecisionRecord `json:"decisions,omitempty"`
 }
@@ -69,10 +70,36 @@ func RequestApproval(w http.ResponseWriter, r *http.Request) {
 	}
 	ar.Id = newID()
 	ar.Status = ApprovalStatusValues.Pending
+	ar.Archived = false
 	ar.Decisions = nil
 	approvalDB[ar.Id] = &ar
 
 	w.WriteHeader(http.StatusCreated)
+	err = json.NewEncoder(w).Encode(ar)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+}
+
+func ArchiveApproval(w http.ResponseWriter, r *http.Request) {
+	// get id as int from url path
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	ar, ok := approvalDB[id]
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	ar.Archived = true
+
+	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(ar)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -169,8 +196,9 @@ func main() {
 	approvalDB = map[int]*ApprovalRequest{}
 
 	r := mux.NewRouter()
-	r.HandleFunc("/approval_requests", RequestApproval).Methods("POST")
 	r.HandleFunc("/approval_requests", ListApprovalRequests).Methods("GET")
+	r.HandleFunc("/approval_requests", RequestApproval).Methods("POST")
+	r.HandleFunc("/approval_requests/{id}", ArchiveApproval).Methods("DELETE")
 	r.HandleFunc("/approval_requests/{id}", GetApprovalRequest).Methods("GET")
 	r.HandleFunc("/approval_requests/{id}/decisions", DecideOnApprovalRequest).Methods("POST")
 	http.Handle("/", r)
